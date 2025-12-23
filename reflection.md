@@ -3,173 +3,190 @@
 
 ---
 
-## 1. Problem Understanding
+## 1. Problem Overview
 
-The objective of this project was to design and implement a **strategic UAV deconfliction system** that acts as a *final authority* to decide whether a newly planned drone mission is safe to execute in shared airspace. The system must evaluate conflicts not only in space, but also in time, ensuring that no two drones violate a minimum safety separation while operating within overlapping mission windows.
+The goal of this project was to build a **strategic UAV deconfliction system** that decides whether a newly planned drone mission is safe to fly in shared airspace. The system checks for possible conflicts with other drones by considering **both space and time**, instead of only checking geometric path intersections.
 
-Unlike tactical or reactive collision avoidance, this system focuses on **pre-flight validation**, where a drone queries the deconfliction service before takeoff and receives an approval or rejection based on predicted spatiotemporal conflicts.
-
----
-
-## 2. System Architecture Overview
-
-The system is designed using a **modular architecture**, separating concerns clearly across components:
-
-- **Data Generation Layer**  
-  Responsible for simulating realistic drone flight paths.
-- **Preprocessing Layer**  
-  Normalizes and prepares flight data for analysis and visualization.
-- **Deconfliction Engine (Core Logic)**  
-  A centralized module that performs all spatiotemporal conflict checks.
-- **User Interface & Visualization Layer**  
-  Collects new mission inputs, visualizes paths, and displays conflict results.
-- **Execution Layer**  
-  Executes approved missions using MAVLink commands.
-
-This separation ensures that the **UI never makes safety decisions**. All decisions are delegated to a centralized spatiotemporal deconfliction module, which improves testability, scalability, and correctness.
+This is a **pre-flight safety system**, meaning the decision is made before the drone takes off. If the path is safe, the mission is approved; otherwise, the system reports where and when conflicts may occur.
 
 ---
 
-## 3. Simulated Flight Path Generation
+## 2. Overall System Design
 
-To evaluate the deconfliction logic, a dataset of simulated drone missions was generated programmatically.
+The system is built in a **modular way**, with each part having a clear responsibility:
 
-Each simulated mission follows these constraints:
+- **Path Generation** – creates realistic simulated drone flight paths
+- **Preprocessing** – prepares and normalizes data for analysis and visualization
+- **Deconfliction Engine** – performs all spatiotemporal safety checks
+- **User Interface** – allows users to create paths and visualize conflicts
+- **Mission Execution** – sends MAVLink commands to fly approved missions
 
-- **Geographic Area Bounding**  
-  All waypoints are constrained within a predefined rectangular operational area (latitude–longitude bounds). This models a shared urban or campus-scale airspace.
-  
-- **Altitude Constraints**  
-  - Mission **start and end altitudes** are fixed at a low altitude (e.g., 10 meters), simulating takeoff and landing phases.
-  - Intermediate waypoints have **randomized altitudes** within a specified range (e.g., 20–60 meters), reflecting cruise flight variations.
-
-- **Temporal Constraints**  
-  - Each mission starts at a randomized time offset from a reference time.
-  - Total mission duration and waypoint spacing are randomized but bounded.
-
-- **Directional Randomization**  
-  Start and end positions are chosen from opposite sides of the bounding area, ensuring diverse flight directions and increasing the likelihood of path intersections.
-
-This controlled randomization produces **realistic yet diverse trajectories**, which is essential for stress-testing spatiotemporal conflict detection logic.
+A key design choice was to ensure that the **UI never decides safety**.  
+All safety decisions are made by a centralized deconfliction module, which makes the system easier to test, reason about, and scale.
 
 ---
 
-## 4. Phases of Deconfliction for a New Mission
+## 3. Simulated Path Generation
 
-When a new drone mission is submitted, the system evaluates it through a **multi-stage deconfliction pipeline**.
+To test the system properly, multiple drone paths were generated programmatically instead of using static data.
 
-### 4.1 Temporal Overlap Check (First Filter)
+Each simulated mission follows a few rules:
 
-The first and cheapest check is **time-based filtering**.
+- **Fixed Operating Area**  
+  All waypoints lie within a defined latitude–longitude boundary, representing a shared airspace.
 
-- The overall mission time window of the new path is compared with each existing drone’s mission window.
-- If two missions do **not overlap in time**, they are immediately skipped.
-  
-This step significantly reduces unnecessary spatial computations and improves scalability.
+- **Altitude Rules**  
+  - Missions start and end at a low altitude (around 10 m) to represent takeoff and landing.
+  - Intermediate waypoints use randomized altitudes within a safe range (e.g., 20–60 m).
 
----
+- **Time Randomization**  
+  - Each mission starts at a random time offset.
+  - Mission duration and waypoint spacing are randomized within limits.
 
-### 4.2 Segment-Level Time Intersection
+- **Direction Randomization**  
+  Start and end points are chosen from different sides of the area, creating varied flight directions and increasing the chance of intersections.
 
-For missions that overlap globally in time:
-
-- Each path is broken into **line segments** between consecutive waypoints.
-- Only segment pairs whose time intervals overlap are considered further.
-
-This ensures that spatial checks are performed **only when two drones could physically coexist in the airspace at the same time**.
+This approach creates **diverse but realistic trajectories**, which is useful for stress-testing the deconfliction logic.
 
 ---
 
-### 4.3 Spatiotemporal Distance Check (4D Check)
+## 4. How New Paths Are Checked
 
-For overlapping segment pairs:
+When a new mission is submitted, it goes through a series of checks.
 
-- Positions of both drones are **interpolated** at multiple sample points within the overlapping time interval.
-- At each sampled time:
-  - Horizontal separation is computed using Euclidean distance in latitude–longitude space (converted approximately to meters).
-  - Vertical separation is computed directly from altitude.
-  - A combined **3D Euclidean distance** is calculated.
+### 4.1 Time Window Check
 
-If the distance falls below a predefined **safety threshold** (e.g., 12 meters), a conflict is recorded.
+The system first checks whether the new mission overlaps in time with existing drone missions.
 
-This process effectively treats each drone’s trajectory as a **continuous 4D curve (x, y, z, t)** rather than discrete waypoints.
+If two missions do not overlap in time, they are skipped entirely.  
+This simple step avoids unnecessary computations and improves performance.
 
 ---
 
-## 5. Conflict Explanation and Visualization
+### 4.2 Segment-Level Time Matching
 
-When conflicts are detected:
+Each flight path is broken into segments between waypoints.
 
-- Each conflict is recorded with:
-  - Drone ID
+Only segment pairs that overlap in time are compared further.  
+This ensures spatial checks are done **only when drones could actually be airborne at the same time**.
+
+---
+
+### 4.3 Distance-Based Conflict Detection (4D Check)
+
+For overlapping segments:
+
+- Drone positions are interpolated at multiple time samples.
+- Horizontal distance is calculated from latitude and longitude.
+- Vertical distance is calculated from altitude.
+- A combined **3D Euclidean distance** is computed.
+
+If the distance is less than a safety threshold (e.g., 12 meters), the system flags a conflict.
+
+This effectively treats each mission as a **continuous 4D path (x, y, z, time)** instead of just a set of discrete waypoints.
+
+---
+
+## 5. Conflict Reporting and Visualization
+
+When conflicts are found:
+
+- The system records:
+  - Which drone caused the conflict
   - Time of conflict
-  - Position (latitude, longitude, altitude)
+  - Position and altitude
   - Separation distance
-- Conflicts are grouped by drone and converted into **human-readable explanations**.
-- The GUI visualizes conflict points directly on the map using highlighted markers, allowing operators to understand *where and when* conflicts occur.
+- Conflicts are grouped and shown as **clear, readable messages**.
+- The GUI highlights conflict points directly on the map.
 
-If no conflicts are found, the system explicitly returns a **PATH SAFE** decision.
-
----
-
-## 6. Mission Execution via MAVLink
-
-If a mission is approved:
-
-- The system proceeds to execute the mission using **MAVLink commands**, as demonstrated in the project demo.
-- The execution flow includes:
-  - Switching the drone to GUIDED mode
-  - Arming the vehicle
-  - Takeoff to the first waypoint altitude
-  - Sequential navigation through approved waypoints using position target commands
-
-This integration demonstrates a **closed-loop workflow**:  
-planning → validation → approval → execution.
+If no conflicts are detected, the system clearly reports that the **path is safe**.
 
 ---
 
-## 7. Testing and Validation Strategy
+## 6. Mission Execution Using MAVLink
 
-To validate correctness, deterministic test cases were created using:
+If a path is approved, the system can directly execute the mission using **MAVLink commands**.
 
-- **Intersecting paths** (expected to produce conflicts)
-- **Non-intersecting paths** (expected to be conflict-free)
+The execution flow includes:
+- Switching to GUIDED mode
+- Arming the drone
+- Taking off to the first waypoint altitude
+- Flying through waypoints sequentially
 
-These tests directly validate the spatiotemporal deconfliction logic and ensure that the system detects true conflicts while avoiding false positives.
+This demonstrates a complete pipeline:  
+**planning → validation → approval → execution**, as shown in the demo video.
 
 ---
 
-## 8. Scalability Considerations
+## 7. Testing Strategy
 
-While the current implementation is suitable for small-to-medium scale simulations, scaling to tens of thousands of drones would require:
+To validate correctness, deterministic test cases were created:
 
-- Spatial indexing structures (e.g., R-trees or geohashing)
-- Time bucketing and interval indexing
+- **Intersecting paths** to ensure conflicts are detected
+- **Non-intersecting paths** to ensure false positives are avoided
+
+These tests directly target the spatiotemporal logic and give confidence that the system behaves as expected.
+
+---
+
+## 8. Use of AI Tools
+
+AI-assisted tools played an important role in this project.
+
+- **ChatGPT and Claude**  
+  Helped with:
+  - Structuring the overall project layout
+  - Understanding the spatiotemporal checking approaches
+  - Testing and fixing bugs
+
+- **DeepSeek / LLM-based search**  
+  Helped with:
+  - Researching MAVLink command usage
+  - Understanding best practices for UAV safety separation
+  - Exploring scalable design patterns
+
+- **Documentation & Testing Support**  
+  AI tools assisted in:
+  - Writing and refining documentation
+  - Designing meaningful test cases
+  - Improving clarity of explanations
+
+All AI-generated suggestions were **reviewed, validated, and adapted manually**, ensuring correctness and alignment with project requirements.
+
+---
+
+## 9. Scalability Considerations
+
+The current system works well for small and medium-scale scenarios.  
+For real-world deployment with thousands of drones, improvements would include:
+
+- Spatial indexing (R-trees, geohashing)
+- Time-based bucketing
 - Parallel or distributed computation
-- Real-time data ingestion pipelines
-- Fault-tolerant, event-driven architecture
+- Real-time data pipelines
+- Fault-tolerant system design
 
-The current modular design makes these extensions feasible without major refactoring.
-
----
-
-## 9. Learnings and Limitations
-
-Key learnings include:
-
-- The importance of separating **decision logic from visualization**
-- The effectiveness of temporal filtering in reducing computational load
-- The trade-offs involved in spatial approximation using latitude–longitude
-
-Limitations include:
-- Approximate conversion from degrees to meters
-- Fixed sampling resolution along segments
-- No modeling of uncertainty or communication delays
-
-These areas represent clear opportunities for future improvement.
+The modular architecture makes these upgrades achievable without major redesign.
 
 ---
 
-## 10. Conclusion
+## 10. Learnings and Limitations
 
-This project demonstrates a complete strategic UAV deconfliction pipeline—from realistic data generation to spatiotemporal analysis and real-world mission execution. The system emphasizes explainability, modularity, and correctness, aligning well with real-world airspace management requirements.
+Key learnings:
+- Clear separation between UI and decision logic is crucial
+- Early time filtering significantly reduces computation
+- Explainable outputs improve trust in safety decisions
+
+Current limitations:
+- Assuming the speed of drones as constant for interpolation
+- Approximate conversion from lat/lon to meters
+- Fixed sampling resolution
+- No uncertainty or wind modeling
+
+These are good candidates for future improvement.
+
+---
+
+## 11. Conclusion
+
+This project delivers a complete strategic UAV deconfliction system, covering realistic data generation, 4D conflict detection, visualization, testing, and mission execution. The focus on modular design, explainability, and safety makes it well aligned with real-world UAV airspace management systems.

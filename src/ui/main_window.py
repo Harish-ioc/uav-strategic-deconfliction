@@ -118,16 +118,16 @@ class MainWindow(QMainWindow):
         execute_mission_btn.setMinimumHeight(40)
         left_layout.addWidget(execute_mission_btn)
 
-        load_btn = QPushButton("📁 Load Existing Paths (xlsx)")
+        load_btn = QPushButton(" Load Existing Paths (xlsx)")
         load_btn.clicked.connect(self.load_paths)
         load_btn.setMinimumHeight(40)
         
-        analyze_btn = QPushButton("🔍 Analyze Collision Risk")
+        analyze_btn = QPushButton(" Analyze Collision Risk")
         analyze_btn.clicked.connect(self.analyze_paths)
         analyze_btn.setMinimumHeight(40)
         analyze_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         
-        clear_btn = QPushButton("🗑️ Clear New Path")
+        clear_btn = QPushButton(" Clear New Path")
         clear_btn.clicked.connect(lambda: self.reset_new())
         clear_btn.setMinimumHeight(40)
 
@@ -152,7 +152,7 @@ class MainWindow(QMainWindow):
         self.text_input.setStyleSheet("font-family: monospace; font-size: 10px;")
         left_layout.addWidget(self.text_input)
         
-        add_text_btn = QPushButton("➕ Add Path from Text")
+        add_text_btn = QPushButton(" Add Path from Text")
         add_text_btn.clicked.connect(self.add_path_from_text)
         add_text_btn.setMinimumHeight(35)
         left_layout.addWidget(add_text_btn)
